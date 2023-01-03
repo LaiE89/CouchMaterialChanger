@@ -1,12 +1,15 @@
+import os
 import numpy as np
 import tensorflow as tf
 import matplotlib
 import matplotlib.pyplot as plt
-from PIL import Image
 import PIL.Image
+import skimage.exposure
 from skimage.transform import resize
 import tensorflow_hub as hub
+import cv2
 from color_change import color_change
+from style_transfer_model import StyleTransferModel
 matplotlib.use('TkAgg')
 
 
@@ -18,8 +21,8 @@ def display(display_list):
     for i in range(len(display_list)):
         plt.subplot(1, len(display_list), i+1)
         plt.title(title[i])
-        #np.set_printoptions(threshold=10_000_000, linewidth=224)
-        #print("Title: " + title[i] + ", Tensor: " + str(display_list[i]))
+        # np.set_printoptions(threshold=10_000_000, linewidth=224)
+        # print("Title: " + title[i] + ", Tensor: " + str(display_list[i]))
         plt.imshow(tf.keras.utils.array_to_img(display_list[i]))
         plt.axis('off')
     plt.show()
@@ -32,7 +35,7 @@ def create_mask(pred_mask):
 
 
 def show_predictions(sample_image, model):
-    #display([sample_image, np.where(model.predict(sample_image[tf.newaxis, ...])[0] > 0.5, 1, 0)])
+    # display([sample_image, np.where(model.predict(sample_image[tf.newaxis, ...])[0] > 0.5, 1, 0)])
     # display([sample_image, model.predict(sample_image[tf.newaxis, ...])[0]])
     result = model.predict(sample_image[tf.newaxis, ...])[0]
     display([sample_image, result])
@@ -80,54 +83,54 @@ if __name__ == "__main__":
 
     # load image path
     while(True):
-        try:
+        # try:
             img_path = input("Give me a path to an image (Type '' to leave): ")
-            color = input("Give me a color (b, g, r): ")
-            if img_path == '':
-                break
+            if img_path != '':
+                material_change_mode = input("Do you want to change color or texture (Type 'texture' or 'color'): ")
+                if material_change_mode.lower() == 'texture':
+                    style_path = input("Give me a path to a texture/style: ")
+                    original_image = PIL.Image.open(img_path)
+                    original_array = np.array(original_image)
+                    resized_image = original_image.resize((224, 224))
+                    resized_array = np.array(resized_image) / 255.
+                    resized_array = resized_array.reshape((resized_array.shape[0], resized_array.shape[1], 3))
+
+                    pred = model.predict(resized_array[tf.newaxis, ...])[0]
+                    resized_pred1 = resize(pred, (original_array.shape[0], original_array.shape[1], 1))
+                    display([original_image, resized_pred1])
+
+                    style_model = StyleTransferModel([img_path], resized_pred1 ,[style_path])
+                    styles = style_model.run()
+                    im = PIL.Image.fromarray(styles)
+                    plt.imshow(im)
+                    plt.axis("off")
+                    plt.show()
+
+                    # style = tf.constant(load_img(style_path))
+                    # picture = tf.constant(load_img(img_path))
+                    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+                    # stylized_image = hub_model(picture, style)[0]
+                    # final_result = tensor_to_image(stylized_image)
+                    # plt.imshow(final_result)
+                    # plt.axis('off')
+                    # plt.show()
+                else:
+                    color = input("Give me a color (b, g, r): ")
+                    original_image = PIL.Image.open(img_path)
+                    original_array = np.array(original_image)
+                    resized_image = original_image.resize((224, 224))
+                    resized_array = np.array(resized_image) / 255.
+                    resized_array = resized_array.reshape((resized_array.shape[0], resized_array.shape[1], 3))
+
+                    pred = model.predict(resized_array[tf.newaxis, ...])[0]
+                    resized_pred1 = resize(pred, (original_array.shape[0], original_array.shape[1], 1))
+                    display([original_image, resized_pred1])
+
+                    new_color, result = color_change(img_path, resized_pred1, desired_color=eval(color))
+                    plt.imshow(result)
+                    plt.axis("off")
+                    plt.show()
             else:
-                original_image = PIL.Image.open(img_path)
-                original_array = np.array(original_image)
-                resized_image = original_image.resize((224, 224))
-                resized_array = np.array(resized_image) / 255.
-                resized_array = resized_array.reshape((resized_array.shape[0], resized_array.shape[1], 3))
-
-                pred = model.predict(resized_array[tf.newaxis, ...])[0]
-                resized_pred1 = resize(pred, (original_array.shape[0], original_array.shape[1], 1))
-                display([original_image, resized_pred1])
-
-                new_color, result = color_change(img_path, resized_pred1, desired_color=eval(color))
-                plt.imshow(result)
-                plt.axis("off")
-                plt.show()
-
-                # style_model = StyleTransferModel([img_path], ["./styles/leather2.jpg"])
-                # styles = style_model.run()
-                # im = Image.fromarray(styles[0])
-                # plt.imshow(im)
-                # plt.axis('off')
-                # plt.show()
-
-                # pred = model.predict(resized_array[tf.newaxis, ...])
-                # pred = (pred >= 0.5).astype(np.uint8)[0]
-                # resized_pred1 = resize(pred, (original_array.shape[0], original_array.shape[1], 1))
-                # new_image_array = (resized_pred1 * original_array * 255).astype(np.uint8)
-                # new_image = PIL.Image.fromarray(new_image_array)
-                # display([original_image, new_image_array])
-                #
-                # segment_result = tf.convert_to_tensor(new_image_array)
-                # segment_result = tf.cast(segment_result, tf.float32)
-                # segment_result = segment_result[tf.newaxis, :]
-                # print("Shape of segment result: " + str(tf.shape(segment_result)))
-                # style = tf.constant(load_img("./styles/leather2.jpg"))
-                # print("Shape of style: " + str(tf.shape(style)))
-                # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-                # stylized_image = hub_model(segment_result, style)[0]
-                # final_result = tensor_to_image(stylized_image)
-                # final_result = style(segment_result, style)
-                # plt.imshow(final_result)
-                # plt.axis('off')
-                # plt.show()
-                # predict(model, img_path)
-        except Exception as e:
-            print("That is not a valid input... " + str(e))
+                break
+        # except Exception as e:
+        #     print("That is not a valid input... " + str(e))

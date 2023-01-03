@@ -1,24 +1,27 @@
+import numpy
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.optim as optim
 from torchvision import transforms, models
-#from config import styles_folder, ims_config, stylized_folder, overwrite
-from pathlib import Path
 from tqdm import trange
+from skimage.transform import resize
+import material_changer
+import cv2
 
 
 class StyleTransferModel:
 
-    def __init__(self, images_paths, im_styles, show_images=True, overwrite=False):
-        self.model = models.vgg19(pretrained=True).features
+    def __init__(self, images_paths, mask, im_styles, show_images=True, overwrite=False):
+        self.model = models.vgg19(weights='VGG19_Weights.DEFAULT').features
 
         for param in self.model.parameters():
             param.requires_grad_(False)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.images_paths = images_paths
+        self.mask = material_changer.post_process_mask(mask)
         self.im_styles = im_styles
         self.show_images = show_images
         self.style_weights = {'conv1_1': 1.,
@@ -30,7 +33,8 @@ class StyleTransferModel:
         self.content_weight = 1  # alpha
         self.style_weight = 1e6  # beta
 
-        self.show_every = 400
+        #self.show_every = 400
+        self.show_every = 5000
         self.steps = 5000  # decide how many iterations to update your image (5000)
         self.max_size = 800
         self.overwrite = overwrite
@@ -167,12 +171,12 @@ class StyleTransferModel:
                 content = self.load_image(image_path).to(self.device)
                 style = self.load_image(style_name).to(self.device)
 
-                if self.show_images:
-                    # Display the images
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
-                    # Content and style ims side-by-side
-                    ax1.imshow(self.im_convert(content))
-                    ax2.imshow(self.im_convert(style))
+                # if self.show_images:
+                #     # Display the images
+                #     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+                #     # Content and style ims side-by-side
+                #     ax1.imshow(self.im_convert(content))
+                #     ax2.imshow(self.im_convert(style))
 
                 # Get content and style features only once before forming the target image
                 content_features = self.get_features(content)
@@ -185,16 +189,36 @@ class StyleTransferModel:
 
                 self.train(target, optimizer, content_features, style_grams)
 
-                if self.show_images:
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
-                    ax1.imshow(self.im_convert(content))
-                    ax2.imshow(self.im_convert(target))
+                # if self.show_images:
+                #     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+                #     ax1.imshow(self.im_convert(content))
+                #     ax2.imshow(self.im_convert(target))
 
                 # Save the output
                 out_image = (self.im_convert(target) * 255).astype(np.uint8)
+                plt.imshow(out_image)
+                plt.show()
                 # im = Image.fromarray(out_image)
                 # im.save(out_path)
                 # print(f"\nSaved stylized image at {out_path}")
-                output[image_path][style_name] = out_image
+                # output[image_path][style_name] = out_image
 
-        return output
+                out_image_resized = resize(out_image, (self.mask.shape[0], self.mask.shape[1], out_image.shape[2]))
+                # plt.imshow(Image.fromarray((out_image * 255).astype(np.uint8)))
+                plt.imshow(out_image_resized)
+                plt.show()
+                img = cv2.imread(image_path)
+                cropped_result = material_changer.crop_image(img, self.mask)
+                colored_facemask = material_changer.crop_mask_from_image(out_image_resized[:, :, ::-1], self.mask)
+
+                cv2.imshow('Binary Mask', self.mask); cv2.waitKey(0); cv2.destroyAllWindows(); cv2.waitKey(1)
+                cv2.imshow('Cropped Result', cropped_result); cv2.waitKey(0); cv2.destroyAllWindows(); cv2.waitKey(1)
+                cv2.imshow('Colored Mask', material_changer.convert_float64_to_uint8(colored_facemask)); cv2.waitKey(0); cv2.destroyAllWindows(); cv2.waitKey(1)
+                # np.set_printoptions(threshold=10_000_000, linewidth=224)
+                # print(colored_facemask)
+                print(cropped_result.dtype)
+                print(material_changer.convert_float64_to_uint8(colored_facemask).dtype)
+
+                result = material_changer.blend_transparent(cropped_result, material_changer.convert_float64_to_uint8(colored_facemask))
+
+        return result
